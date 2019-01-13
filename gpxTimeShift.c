@@ -14,7 +14,6 @@
 #define MAXSECONDS 59
 #define GET_TIMEZONE 1
 #define NUMSPACES_FIRST 2
-#define NUMSPACES_BODY 4
 
 struct date {
 	int year;
@@ -40,7 +39,7 @@ void date_print_to_console(struct date *outputDate, int numLeadingWS);
 void date_print_members(struct date *outputDate);
 void date_write_file_line(struct date *outputDate, FILE *outputFile, int numLeadingWS); 
 int getDateInt(enum DateCat category);
-int findTimeLine(char lineContents[], FILE* filetoSearch);
+int findTimeLine(char lineContents[], FILE *fileToSearch, FILE *outFile);
 
 int main(int argc, char *argv[]) {
 	char filePath[MAXLENGTH];
@@ -65,61 +64,66 @@ int main(int argc, char *argv[]) {
 	
 	//Open the file
 	FILE *fileGPX;	
-	fileGPX = fopen(filePath, "r+");	
+	fileGPX = fopen(filePath, "r");	
 	if (fileGPX == NULL) {
 		printf("Opening file at location: \"%s\" failed. Please check file location and try again.\n", filePath);
 		return -1;
 	}
-	printf("File opened successfully!\n");
 	
 	//Get the time zone
 	struct date timeZone = date_get_user(GET_TIMEZONE);
-	//printf("Your time zone shifts from GMT by %02d hours and %02d minutes!\n", timeZone.hour, timeZone.minute);
 	
 	//Get the time shift
 	printf("At what time would you like the file to start? All times will be shifted accordingly.\n");
 	struct date timeGoal = date_get_user(0);
-	printf("Goal timeDate: ");
-	date_print_to_console(&timeGoal, 0);
 	
+	//Account for time zone
 	struct date timeGMT = date_diff(&timeGoal, &timeZone);
-	printf("Goal timeDate (adjusted): ");
-	date_print_to_console(&timeGMT, 0);
 	
 	//Read the file to figure out what the time shift should be
 	char currentLine[MAXLENGTH];
-	while (findTimeLine(currentLine, fileGPX) != NUMSPACES_FIRST) { }
+	//Get the first time line only, it has 2 spaces as of 2019
+	while (findTimeLine(currentLine, fileGPX, NULL) != NUMSPACES_FIRST) { }
 	struct date timeStart = date_interp_file(currentLine);	
-	printf("currentLine: %s\n", currentLine);
-	printf("First time: ");
-	date_print_to_console(&timeStart, 0);
-	
 	struct date timeShift = date_diff(&timeGMT, &timeStart);
-	printf("Shift time: ");
-	date_print_to_console(&timeShift, 0);	
 	
-	//Go through file line by line and change the times.
+	//Prepare containers for writing lines
 	struct date timeWrite, timeLine;
-	int numSpaces;
 	int numReplaced = 0;
+	int numSpaces = 0;
 	rewind(fileGPX);
 	
-	while ((numSpaces = findTimeLine(currentLine, fileGPX)) != -1) {
+	//Create the output file by appending input name
+	FILE *fileOut;	
+	char fileOutPath[MAXLENGTH];
+	//Erase ".gpx" from end of input name
+	subString(fileOutPath, filePath, 0, (strlen(filePath) - 4));
+	char append[] = "_new.gpx";
+	strcat(fileOutPath, append);
+	fileOut = fopen(fileOutPath, "w");	
+	if (fileOut == NULL) {
+		printf("Opening file at location: \"%s\" failed. Please check file location and try again.\n", filePath);
+		return -1;
+	}
+	
+	//Go through file line by line and change the times.
+	//If numSpaces = -1, that means there are still lines in file, but the current line not a <time> line
+	while ((numSpaces = findTimeLine(currentLine, fileGPX, fileOut)) != -1) {
+		//Get struct date from <time> line
 		timeLine = date_interp_file(currentLine);
-		//printf("Found time: ");
-		//date_print_to_console(&timeLine, 0);
 		
+		//Add the offset to a local copy
 		timeWrite = date_add(&timeShift, &timeLine);
-		//printf("Output time: ");
-		//date_print_to_console(&timeWrite, 0);
 		
-		//date_write_file_line(&timeWrite, fileGPX, numSpaces);
-		date_print_to_console(&timeWrite, numSpaces);
+		//Print the shifted line to the output
+		date_write_file_line(&timeWrite, fileOut, numSpaces);
 		numReplaced++;
 	}
 	
+	//Close and output success message
+	fclose(fileOut);
 	fclose(fileGPX);
-	printf("Successfully replaced %d times!\n", numReplaced);
+	printf("Successfully replaced %d <time> lines!\n", numReplaced);
 		
 	return 0;
 }
@@ -314,6 +318,7 @@ void date_print_to_console(struct date *outputDate, int numLeadingWS) {
 	return;	
 }
 
+//Usage: debug function to show all members of the date struct
 void date_print_members(struct date *outputDate) {
 	printf("Year: %d\n", outputDate->year);
 	printf("Month: %d\n", outputDate->month);
@@ -325,11 +330,13 @@ void date_print_members(struct date *outputDate) {
 
 //Usage: write XML-style line containing date info to the file with a certain number of leading white spaces
 void date_write_file_line(struct date *outputDate, FILE *outputFile, int numLeadingWS) {
+	//printf("Writing to file\n");
 	//Add the white spaces back in
 	while(numLeadingWS-- > 0) {
 		fprintf(outputFile, " ");
 	}
-	fprintf(outputFile, "%s<time>%04d-%02d-%02dT%02d:%02d:%02dZ</time>\n", outputDate->year, outputDate->month, outputDate->day, outputDate->hour, outputDate->minute, outputDate->second);
+	//printf("Whitespace printed!\n");
+	fprintf(outputFile, "<time>%04d-%02d-%02dT%02d:%02d:%02dZ</time>\n", outputDate->year, outputDate->month, outputDate->day, outputDate->hour, outputDate->minute, outputDate->second);
 	
 	return;	
 }
@@ -372,16 +379,29 @@ int getDateInt(enum DateCat category) {
 
 //Usage: pass in string to store contents of next time line, then search through file
 //Removes white spaces and returns number of leading white spaces
-int findTimeLine(char lineContents[], FILE *fileToSearch) {
+int findTimeLine(char lineContents[], FILE *fileToSearch, FILE *outFile) {
 	int whiteSpaces = 0;
 	char tempLine1[MAXLENGTH];
 	char tempLine2[MAXLENGTH];
-	while (fgets(tempLine1, sizeof(tempLine1), fileToSearch)) {
+	//Get the line from the file onto tempLine1
+	while (fgets(tempLine1, sizeof(tempLine1), fileToSearch) != NULL) {
+		//Remove whitespaces from tempLine1 and store that in lineContents
 		whiteSpaces = strRemoveWS(lineContents, tempLine1);
+		//Isolate possible <time> tag from lineContents
 		subString(tempLine2, lineContents, 0, 6);
+		//If that was a <time> tag, return number of leading white spaces
 		if (!strcmp(tempLine2, "<time>")) {
 			return whiteSpaces;
 		}
-	}
+		//Only do this if output file was passed in
+		else if (outFile != NULL) {
+			//Add back the white spaces that were stripped
+			while(whiteSpaces-- > 0) {
+				fprintf(outFile, " ");
+			}
+			//Print the non-<time> line back to the file
+			fprintf(outFile, "%s", lineContents);
+		}
+	}	
 	return -1;
 }
