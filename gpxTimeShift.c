@@ -271,40 +271,76 @@ struct date date_diff(struct date *goalDate, struct date *startDate) {
 struct date date_add(struct date *date1, struct date *date2) {
 	struct date tempDate;
 	int carry = 0;
+	int borrow = 0;
+	
 	tempDate.second = date1->second + date2->second;
 	if (tempDate.second > MAXSECONDS) {
 		carry = tempDate.second / (MAXSECONDS + 1);
 		tempDate.second %= (MAXSECONDS + 1);
 	}
-	tempDate.minute = date1->minute + date2->minute + carry;
+	else if (tempDate.second < 0) {
+		borrow = 1;
+		tempDate.second += (MAXSECONDS + 1);
+	}
+	
+	tempDate.minute = date1->minute + date2->minute + carry - borrow;
+	borrow = 0;
 	carry = 0;
 	if (tempDate.minute > MAXMINUTES) {
 		carry = tempDate.minute / (MAXMINUTES + 1);
 		tempDate.minute %= (MAXMINUTES + 1);
 	}
-	tempDate.hour = date1->hour + date2->hour + carry;
+	else if (tempDate.minute < 0) {
+		borrow = 1;
+		tempDate.minute += (MAXMINUTES + 1);
+	}
+	
+	tempDate.hour = date1->hour + date2->hour + carry - borrow;
+	borrow = 0;
 	carry = 0;
 	if (tempDate.hour > MAXHOURS) {
 		carry = tempDate.hour / (MAXHOURS + 1);
 		tempDate.hour %= (MAXHOURS + 1);
 	}
-	tempDate.day = date1->day + date2->day + carry;
+	else if (tempDate.hour < 0) {
+		borrow = 1;
+		tempDate.hour += (MAXHOURS + 1);
+	}
+	
+	tempDate.day = date1->day + date2->day + carry - borrow;
+	borrow = 0;
 	carry = 0;
 	if (tempDate.day > MAXDAYS) {
 		carry = tempDate.day / (MAXDAYS + 1);
 		tempDate.day %= (MAXDAYS + 1);
 	}
-	tempDate.month = date1->month + date2->month + carry;
+	else if (tempDate.day < 0) {
+		borrow = 1;
+		tempDate.day += (MAXDAYS + 1);
+	}
+	
+	tempDate.month = date1->month + date2->month + carry - borrow;
+	borrow = 0;
 	carry = 0;
 	if (tempDate.month > MAXMONTHS) {
 		carry = tempDate.month / (MAXMONTHS + 1);		
 		tempDate.month %= (MAXMONTHS + 1);
 	}
-	tempDate.year = date1->year + date2->year + carry;
+	else if (tempDate.month < 0) {
+		borrow = 1;
+		tempDate.month += (MAXMONTHS + 1);
+	}
+	
+	tempDate.year = date1->year + date2->year + carry - borrow;
 	if (tempDate.year > MAXYEARS) {
 		printf("Error: date overflow! Maximum year allowed: %d\n", MAXYEARS);
 		tempDate.year = MAXYEARS;
 	}
+	else if (tempDate.year < 0) {
+		printf("Error: time is B.C.! There is something wrong!\n");
+		tempDate.year = 0;
+	}
+	
 	return tempDate;
 }
 
