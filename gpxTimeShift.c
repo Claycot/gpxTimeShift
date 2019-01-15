@@ -13,7 +13,6 @@
 #define MAXMINUTES 59
 #define MAXSECONDS 59
 #define GET_TIMEZONE 1
-#define NUMSPACES_FIRST 2
 
 struct date {
 	int year;
@@ -83,7 +82,7 @@ int main(int argc, char *argv[]) {
 	//Read the file to figure out what the time shift should be
 	char currentLine[MAXLENGTH];
 	//Get the first time line only, it has 2 spaces as of 2019
-	while (findTimeLine(currentLine, fileGPX, NULL) != NUMSPACES_FIRST) { }
+	while (findTimeLine(currentLine, fileGPX, NULL) == -1) { }
 	struct date timeStart = date_interp_file(currentLine);	
 	struct date timeShift = date_diff(&timeGMT, &timeStart);
 	
